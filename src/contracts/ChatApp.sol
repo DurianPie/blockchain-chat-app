@@ -10,9 +10,14 @@ contract ChatApp {
         address from;
     }
 
+    Message[] public boardMessages;
+
     event messageSentEvent(address indexed from, address indexed to, string message);
     event etherSentEvent(address indexed from, address indexed to, bool success);
     event messagesFetchedEvent(address indexed from, address indexed to, Message[] messages);
+
+    event boardMessageSentEvent(address indexed from, string message);
+    event boardMessagesFetchedEvent(Message[] messages);
 
     function sendMsg(address to, string memory message) public {
         messages[msg.sender][to].push(Message(message, msg.sender));
@@ -34,5 +39,14 @@ contract ChatApp {
         else {
             emit messagesFetchedEvent(msg.sender, to, messages[msg.sender][to]);
         }
+    }
+
+    function sendBoardMsg(address from, string memory message) public {
+        boardMessages.push(Message(message, from));
+        emit boardMessageSentEvent(from, message);
+    }
+
+    function getAllBoardMsg() public {
+        emit boardMessagesFetchedEvent(boardMessages);
     }
 }

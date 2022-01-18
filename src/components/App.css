@@ -75,6 +75,7 @@ body {
     border-radius: 12px;
   }
   
+  
   .text-only {
     margin-left: 45px;
   }
@@ -99,6 +100,21 @@ body {
   
   .response .text {
     background-color: #e3effd !important;
+  }
+
+  .board-time {
+    float: right;
+    margin-left: 20px !important;
+  }
+  
+  .board {
+    float: right;
+    margin-left: 5% !important;
+    margin-right:auto; /* flexbox alignment rule */
+  }
+  
+  .board .text {
+    background-color: #beb5b5 !important;
   }
   
   .footer-chat {

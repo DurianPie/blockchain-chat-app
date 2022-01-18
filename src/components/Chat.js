@@ -11,9 +11,13 @@ class Chat extends Component {
         await this.listenToMessages()
         await this.listenToEther()
         await this.listenToFetchAllMsg()
+        await this.listenToBoardMessages()
+        await this.listenToFetchAllBoardMessages()
+        // await this.fetchAllBoardMsg()
         await this.fetchAllMsg()
+        // await this.fetchWholeMsg()
         await this.updateUIData()
-      }
+    }
 
     constructor(props) {
         super(props)
@@ -43,6 +47,9 @@ class Chat extends Component {
             blockHash: '',
             didATransaction: false,
             isLastTransactionSuccess: false,
+            forChat: true,
+            boardMessages: [],
+            boardAccount: '',
         }
     }
 
@@ -70,7 +77,8 @@ class Chat extends Component {
         this.setState({ 
             accounts: accounts,
             account: accounts[0],
-            otherAccount: accounts[1]
+            otherAccount: accounts[1],
+            boardAccount: accounts[0],
          })
         console.log(accounts)
     
@@ -111,6 +119,7 @@ class Chat extends Component {
         .on('data', binded)
         .on('error', console.error);
     }
+
 
     // ------- handlers ------
     async didReceiveMessageBinded(event){
@@ -171,7 +180,10 @@ class Chat extends Component {
         const didSendEther = await this.sendEtherIfAsked()
         
         if (!didSendEther) {
-            await this.state.chatContract.methods.sendMsg(this.state.otherAccount, message).send({ from: this.state.account, gas: 1500000 })
+            await this.state.chatContract.methods.sendMsg(this.state.otherAccount, message).send({ 
+                from: this.state.account, 
+                gas: 1500000 
+            })
         }
     }
 
@@ -192,7 +204,97 @@ class Chat extends Component {
     }
 
     async fetchAllMsg() {
-        await this.state.chatContract.methods.getAllMsg(this.state.otherAccount).send({ from: this.state.account })
+        await this.state.chatContract.methods.getAllMsg(this.state.otherAccount).send({ 
+            from: this.state.account 
+        })
+    }
+
+    // ------- 留言板 MessageBoard ------
+    async changeState() {
+        let chatorboard;
+        if(this.state.forChat) {
+            chatorboard = false;
+        } else {
+            chatorboard = true;
+        }
+        
+        this.setState({
+            forChat: chatorboard,
+        })
+
+        await this.fetchAllBoardMsg()
+    }
+
+    async listenToBoardMessages() {
+        var binded = this.didReceiveBoardMessageBinded.bind(this)
+        this.state.chatContract.events.boardMessageSentEvent({})
+        .on('data', binded)
+        .on('error', console.error);
+    }
+
+    async didReceiveBoardMessageBinded(event){
+        const message = event.returnValues.message
+        const sender = event.returnValues.from
+        this.didReceiveBoardMessage(message, sender)
+    }
+
+    async didReceiveBoardMessage(message, from) {
+        let boardMessages = this.state.boardMessages;
+        boardMessages.push(
+            {
+                msg: message,
+                from: from,
+            }
+        )
+        this.setState({
+            boardMessages: boardMessages,
+            inputValue: ''
+        })
+    }
+
+    async didSendBoardMessage(message) {
+        await this.state.chatContract.methods.sendBoardMsg(this.state.boardAccount, message).send({ 
+            from: this.state.boardAccount, 
+            gas: 1500000 
+        })
+    }
+
+    async listenToFetchAllBoardMessages() {
+        var binded = this.didReceiveAllBoardMsgBinded.bind(this)
+        this.state.chatContract.events.boardMessagesFetchedEvent({})
+        .on('data', binded)
+        .on('error', console.error);
+    }
+
+    async didReceiveAllBoardMsgBinded(event){
+        let allMsg = []
+
+        event.returnValues.messages.forEach((message) => {
+            allMsg.push({
+                msg: message['message'],
+                from: message['from']
+            })
+        })
+    
+        this.setState({
+            boardMessages: allMsg
+        })
+        // await this.updateUIData()
+    }
+
+    async updateBoardAddressSelect(newValue) {
+        this.setState({
+            boardAccount: newValue,
+        })
+        
+        await this.wait()
+        await this.fetchAllBoardMsg()
+    }
+
+    async fetchAllBoardMsg() {
+        await this.state.chatContract.methods.getAllBoardMsg().send({ 
+            from: this.state.boardAccount
+        })
     }
 
     // ------- UI state updaters ------
@@ -268,7 +370,7 @@ class Chat extends Component {
     }
 
     // ------- UI ------
-    getMessagesAsDivs() {
+    getChatMessagesAsDivs() {
         let chatDivs = this.state.chats.map(x => x.response ? 
             <div class="message text-only">
                 <div class="response">
@@ -280,6 +382,17 @@ class Chat extends Component {
             </div>
         )
         return chatDivs.reverse()
+    }
+
+    getBoardMessagesAsDivs() {
+        let boardMessageDivs = this.state.boardMessages.map(x =>
+            <div class="message text-only">
+                <div class="board">
+                <p class="text"> {x.from}  留言:   {x.msg}</p>
+                </div>
+            </div>
+        )
+        return boardMessageDivs.reverse()
     }
 
     getToggleAdresses(isOtherAccount) {
@@ -321,62 +434,103 @@ class Chat extends Component {
 
     // ------- rendering ------
     render() {
-        return (
-        <body>
-            <div class="block-container">
-                <div class="row">
-                    <div class="col-7 left-block">
-                        <section class="chat">
-                            <div class="header-chat">
-                                <div class="left">
-                                    <img src={mainLogo} class="arrow"/>
-                                    <select class="custom-select" onChange={e => this.updateAddressSelect(e.target.value, false)} >
-                                        { this.getToggleAdresses(false) }
-                                    </select>     
+        let renderInfo;
+        if (this.state.forChat) {
+            renderInfo = (
+                <body>
+                <div class="block-container">
+                    <div class="row">
+                        <div class="col-7 left-block">
+                            <section class="chat">
+                                <div class="header-chat">
+                                    <div class="left">
+                                        <img src={mainLogo} class="arrow"/>
+                                        <select class="custom-select" onChange={e => this.updateAddressSelect(e.target.value, false)} >
+                                            { this.getToggleAdresses(false) }
+                                        </select>     
+                                    </div>
+                                    <div class="right">
+                                        <select class="custom-select" onChange={e => this.updateAddressSelect(e.target.value, true)} >
+                                            { this.getToggleAdresses(true) }
+                                        </select>  
+                                    </div>
                                 </div>
-                                <div class="right">
-                                    <select class="custom-select" onChange={e => this.updateAddressSelect(e.target.value, true)} >
-                                        { this.getToggleAdresses(true) }
-                                    </select>  
+                                <div class="messages-chat">
+                                { this.getChatMessagesAsDivs() }
                                 </div>
+                            </section>
+                            <div class="footer-chat">
+                                <i class="icon fa fa-smile-o clickable" style={{fontSize: "25pt"}} aria-hidden="true"></i>
+                                <input value={this.state.inputValue} onChange={evt => this.updateInputValue(evt)} type="text" class="write-message" placeholder="Type your message here"></input>
+                                <i class="icon send fa fa-paper-plane-o clickable" aria-hidden="true"></i>
+                                <button class="btn btn-success send-btn" onClick={() => this.didSendMessage(this.state.inputValue)}>Send</button>
                             </div>
-                            <div class="messages-chat">
-                            { this.getMessagesAsDivs() }
+                        </div>
+                        <div class="col-5 right-block">
+                            <h3>Blockchain state</h3>
+                            <p>Number of blocks: { this.state.nbBlocks }</p>
+                            <p>Last transaction gas: { this.state.lastGas }</p>
+                            <div class="sender-block blockchain-block">
+                                <p><b>Sender address:</b></p>
+                                <p>{ this.state.account }</p>
+                                <p>Number of transactions: { this.state.accountNbTransactions }</p>
+                                <p>Wallet balance: { this.state.accountBalance } ETH</p>
                             </div>
-                        </section>
-                        <div class="footer-chat">
-                            <i class="icon fa fa-smile-o clickable" style={{fontSize: "25pt"}} aria-hidden="true"></i>
-                            <input value={this.state.inputValue} onChange={evt => this.updateInputValue(evt)} type="text" class="write-message" placeholder="Type your message here"></input>
-                            <i class="icon send fa fa-paper-plane-o clickable" aria-hidden="true"></i>
-                            <button class="btn btn-success send-btn" onClick={() => this.didSendMessage(this.state.inputValue)}>Send</button>
-                        </div>
-                    </div>
-                    <div class="col-5 right-block">
-                        <h3>Blockchain state</h3>
-                        <p>Number of blocks: { this.state.nbBlocks }</p>
-                        <p>Last transaction gas: { this.state.lastGas }</p>
-                        <div class="sender-block blockchain-block">
-                            <p><b>Sender address:</b></p>
-                            <p>{ this.state.account }</p>
-                            <p>Number of transactions: { this.state.accountNbTransactions }</p>
-                            <p>Wallet balance: { this.state.accountBalance } ETH</p>
-                        </div>
-                        <div class="recip-block blockchain-block">
-                            <p><b>Recipient address:</b></p>
-                            <p>{ this.state.otherAccount }</p>
-                            <p>Number of transactions: { this.state.otherAccountNbTransactions }</p>
-                            <p>Wallet balance: { this.state.otherAccountBalance } ETH</p>
-                        </div>
+                            <div class="recip-block blockchain-block">
+                                <p><b>Recipient address:</b></p>
+                                <p>{ this.state.otherAccount }</p>
+                                <p>Number of transactions: { this.state.otherAccountNbTransactions }</p>
+                                <p>Wallet balance: { this.state.otherAccountBalance } ETH</p>
+                            </div>
 
-                        <div class="alert-transac">
-                            { this.displayEtherTransactionStatus() }
+                            <div class="alert-transac">
+                                { this.displayEtherTransactionStatus() }
+                            </div>
+                            
                         </div>
-                        
                     </div>
-                </div>
-                
-                </div>
-        </body>)
+                    
+                    </div>
+            </body>
+            )
+        } else {
+            renderInfo = (
+                <body>
+                    <div class="block-container">
+                    <div class="row">
+                        <div class="col-12 left-block">
+                            <section class="chat">
+                                <div class="header-chat">
+                                    <div class="left">
+                                        选择留言者:  
+                                        <select class="custom-select" onChange={e => this.updateBoardAddressSelect(e.target.value)}>
+                                            {this.getToggleAdresses(false) }
+                                        </select> 
+                                    </div>
+                                </div>
+                                <div class="messages-chat">
+                                    { this.getBoardMessagesAsDivs() }
+                                </div>
+                            </section>
+                            <div class="footer-chat">
+                                <i class="icon fa fa-smile-o clickable" style={{fontSize: "25pt"}} aria-hidden="true"></i>
+                                <input value={this.state.inputValue} onChange={evt => this.updateInputValue(evt)} type="text" class="write-message" placeholder="Write your message here"></input>
+                                <i class="icon send fa fa-paper-plane-o clickable" aria-hidden="true"></i>
+                                <button class="btn btn-success send-btn" onClick={() => this.didSendBoardMessage(this.state.inputValue)}>Write</button>
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+                </body>
+            )
+        }
+        return (
+            <div>
+                <button class="btn btn-success send-btn" onClick={() => this.changeState()}>切换聊天与留言板</button>
+                {renderInfo}
+            </div>
+            
+        )
     }
 
 }
